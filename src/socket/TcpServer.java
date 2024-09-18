@@ -1,26 +1,10 @@
-package tcpserver.src.socket;
-
-import java.io.IOException;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Queue;
-
-import tcpserver.src.mavlinklib.MAVLinkPacket;
-import tcpserver.src.mavlinklib.Parser;
-import tcpserver.src.mavlinklib.command.FlightCommand;
-import tcpserver.src.mavlinklib.common.msg_command_ack;
-import tcpserver.src.mavlinklib.common.msg_sys_status;
-import tcpserver.src.mavlinklib.enums.MAV_CMD;
-
 public class TcpServer implements Server, Connection.Listener {
 
     private ServerSocket serverSocket;
     private volatile boolean isStop;
     private List<Connection> connections = new ArrayList<>();
     private List<Connection.Listener> listeners = new ArrayList<>();
+    Queue<msg_sys_status> statusQueue = new LinkedList<>();
 
 
     public void setPort(Integer port) {
@@ -74,14 +58,17 @@ public class TcpServer implements Server, Connection.Listener {
     public void addListener(Connection.Listener listener) {
         listeners.add(listener);
     }
-/*
+
     @Override
-    public void messageReceived(Connection connection, Object message, Queue queue) throws IOException {
+    public void messageReceived(Connection connection, Object message) throws IOException {
+        System.out.println("*******************************************************");
+
         for (Connection.Listener listener : listeners) {
-            listener.messageReceived(connection, message, queue);
+            listener.messageReceived(connection, message);
         }
         Parser mParser = new Parser();
-        byte[] bytes = Arrays.copyOf(message, 4096);
+
+        byte[] bytes = Arrays.copyOf((byte[]) message, 4096);
 
         MAVLinkPacket packet;
         for (int i = 0; i < bytes.length; i++) {
@@ -92,63 +79,38 @@ public class TcpServer implements Server, Connection.Listener {
                     msg_sys_status status = new msg_sys_status(packet);
                     System.out.println(status);
 
-                    if (!queue.isEmpty() && (status.onboard_control_sensors_present != MAV_CMD.MAV_CMD_DO_DIGICAM_CONTROL)) {
 
-                        send(queue.poll().getRawData());
+                    if (commandQueue.peek() != null && (status.onboard_control_sensors_present != MAV_CMD.MAV_CMD_DO_DIGICAM_CONTROL)) {
+                        statusQueue.add(status);
+                        //                                connection.sleep();
+                        //                                connection.send(queue.poll());
+
                     }
 
-                    for (int j = 0; j < 10000000; j++) {
-                        System.out.print(5);
-                    }
+                    //                            for (int j = 0; j < 10000000; j++) {
+                    //                                System.out.print(5);
+                    //                            }
 
-                    if(!queue.isEmpty() && (status.onboard_control_sensors_present == MAV_CMD.MAV_CMD_COMPONENT_ARM_DISARM)){
-                        send(queue.poll().getRawData());
-                    }
+                    //                    if (commandQueue.peek() != null && (status.onboard_control_sensors_present == MAV_CMD.MAV_CMD_COMPONENT_ARM_DISARM)) {
+                    //                        connection.sleep();
+                    //                        connection.send(commandQueue.poll());
+                    //                    }
 
                 }
                 System.out.println("client : " + packet);
 
             }
         }
-    }
+        if (statusQueue.poll() != null) {
+            if (commandQueue.peek() != null) {
+                System.out.println(Arrays.toString(commandQueue.peek()));
+                connection.send(commandQueue.poll());
 
- */
-    @Override
-    public void messageReceived(Connection connection, Object message, Queue<FlightCommand> queue) throws IOException {
-        for (Connection.Listener listener : listeners) {
-            listener.messageReceived(connection, message, queue);
+                connection.sleep();
+
+            }
+
         }
-        Parser mParser = new Parser();
-
-        byte[] bytes = Arrays.copyOf((byte[]) message, 4096);
-
-                MAVLinkPacket packet;
-                for (int i = 0; i < bytes.length; i++) {
-                    packet = mParser.mavlink_parse_char(bytes[i] & 0xff);
-                    if (packet != null) {
-
-                        if (packet.msgid == msg_command_ack.MAVLINK_MSG_ID_COMMAND_ACK) {
-                            msg_sys_status status = new msg_sys_status(packet);
-                            System.out.println(status);
-
-                            if (!queue.isEmpty() && (status.onboard_control_sensors_present != MAV_CMD.MAV_CMD_DO_DIGICAM_CONTROL)) {
-
-                                connection.send(queue.poll().getRawData());
-                            }
-
-                            for (int j = 0; j < 10000000; j++) {
-                                System.out.print(5);
-                            }
-
-                            if(!queue.isEmpty() && (status.onboard_control_sensors_present == MAV_CMD.MAV_CMD_COMPONENT_ARM_DISARM)){
-                                connection.send(queue.poll().getRawData());
-                            }
-
-                        }
-                        System.out.println("client : " + packet);
-
-                    }
-                }
     }
 
     @Override
